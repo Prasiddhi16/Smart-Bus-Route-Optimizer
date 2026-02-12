@@ -16,14 +16,18 @@ extern "C" {
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
+#include <QGraphicsLineItem>
 #include <QScrollArea>
 #include <QFont>
-//creation of the front end portion of the optimizer
+#include <QMap>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle("Smart City Bus Route Optimizer");
     resize(1100, 800);
+
+    initbusnet();
 
     QScrollArea *scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
@@ -35,35 +39,32 @@ MainWindow::MainWindow(QWidget *parent)
 
     QVBoxLayout *mainLayout = new QVBoxLayout(contentWidget);
     mainLayout->setSpacing(16);
-    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setContentsMargins(20,20,20,20);
 
     QFrame *header = new QFrame;
     header->setStyleSheet("background:#8B5A7C;color:white;border-radius:8px;padding:16px;");
-
     QVBoxLayout *headerLayout = new QVBoxLayout(header);
     QLabel *title = new QLabel("Smart City Bus Route Optimizer");
-    title->setFont(QFont("Segoe UI", 18, QFont::Bold));
+    title->setFont(QFont("Segoe UI",18,QFont::Bold));
     QLabel *subtitle = new QLabel("Find the optimal bus route based on distance, transfers, or fare");
     subtitle->setStyleSheet("opacity:0.85;");
-
     headerLayout->addWidget(title);
     headerLayout->addWidget(subtitle);
     mainLayout->addWidget(header);
 
     QGroupBox *routeFinder = new QGroupBox("Route Finder");
     QVBoxLayout *routeLayout = new QVBoxLayout(routeFinder);
-
     QGridLayout *formGrid = new QGridLayout;
     QComboBox *srcCombo = new QComboBox;
-    srcCombo->addItems({"Stop A","Stop B","Stop C","Stop D","Stop E"});
     QComboBox *dstCombo = new QComboBox;
-    dstCombo->addItems({"Stop F","Stop G","Stop H","Stop I"});
-
+    for(int i=0;i<stopcount;i++){
+        srcCombo->addItem(stops[i].name);
+        dstCombo->addItem(stops[i].name);
+    }
     formGrid->addWidget(new QLabel("Source Stop"),0,0);
     formGrid->addWidget(srcCombo,1,0);
     formGrid->addWidget(new QLabel("Destination Stop"),0,1);
     formGrid->addWidget(dstCombo,1,1);
-
     routeLayout->addLayout(formGrid);
 
     QHBoxLayout *algoLayout = new QHBoxLayout;
@@ -82,95 +83,101 @@ MainWindow::MainWindow(QWidget *parent)
     actionLayout->addWidget(findBtn);
     actionLayout->addWidget(clearBtn);
     routeLayout->addLayout(actionLayout);
-
     mainLayout->addWidget(routeFinder);
 
     QGroupBox *visualBox = new QGroupBox("Bus Network Visualization");
     QVBoxLayout *visualLayout = new QVBoxLayout(visualBox);
-
     QGraphicsView *view = new QGraphicsView;
     QGraphicsScene *scene = new QGraphicsScene(view);
     view->setScene(scene);
-    view->setMinimumHeight(300);
+    view->setMinimumHeight(400);
     view->setRenderHint(QPainter::Antialiasing);
-
     visualLayout->addWidget(view);
     mainLayout->addWidget(visualBox);
 
-    auto stop = [&](int x, int y, const QString &name, QColor color)
-    {
+    QMap<QString,QPointF> stopPositions;
+    auto stopDraw = [&](const QString &name, int x, int y, QColor color){
         scene->addEllipse(x,y,16,16,QPen(Qt::NoPen),QBrush(color));
         auto t = scene->addText(name);
-        t->setPos(x - 10, y + 18);
+        t->setPos(x-10,y+18);
+        stopPositions[name] = QPointF(x,y);
     };
 
-    scene->addLine(108,158,208,208,QPen(Qt::gray,2));
-    scene->addLine(208,208,308,108,QPen(Qt::gray,2));
-    scene->addLine(308,108,458,158,QPen(Qt::gray,2));
+    int scale=2;
+    stopDraw("A",100*scale, 150*scale,Qt::green);
+    stopDraw("B",200*scale,250*scale,Qt::green);
+    stopDraw("C",300*scale,100*scale,Qt::yellow);
+    stopDraw("D",400*scale,180*scale,Qt::green);
+    stopDraw("E",500*scale,120*scale,Qt::yellow);
+    stopDraw("F",150*scale,300*scale,Qt::green);
+    stopDraw("G",250*scale,50*scale,Qt::yellow);
+    stopDraw("H",350*scale,280*scale,Qt::green);
+    stopDraw("I",450*scale,80*scale,Qt::yellow);
+    stopDraw("J",550*scale,220*scale,Qt::green);
+    scene->setSceneRect(scene->itemsBoundingRect());
+    view->fitInView(scene->sceneRect(), Qt::KeepAspectRatio);
 
-    stop(100,150,"Stop A",Qt::green);
-    stop(200,200,"Stop B",Qt::green);
-    stop(300,100,"Stop C",Qt::yellow);
-    stop(450,150,"Stop F",Qt::green);
+
+    for(int i=0;i<stopcount;i++)
+{
+        for(int j=0;j<stops[i].edgecount;j++)
+        {
+        int v =stops[i].edge[j].to;
+        if(i<v)
+        {
+            scene->addLine(
+                stopPositions[stops[i].name].x()+8,
+                stopPositions[stops[i].name].y()+8,
+                stopPositions[stops[v].name].x()+8,
+                stopPositions[stops[v].name].y()+8,
+                QPen(Qt::gray, 1)
+                );
+
+        }
+        }
+    }
+
 
     QGroupBox *results = new QGroupBox("Results");
     QVBoxLayout *resultsLayout = new QVBoxLayout(results);
     QGridLayout *statsGrid = new QGridLayout;
 
-    auto statCard = [&](const QString &label, const QString &value, QColor border)
-    {
+    auto statCard = [&](const QString &label, QLabel* valueLabel, QColor border){
         QFrame *card = new QFrame;
-        card->setStyleSheet(
-            QString(
-                "QFrame {"
-                " border: 2px solid %1;"
-                " border-radius: 10px;"
-                " background: white;"
-                "}"
-                ).arg(border.name())
-            );
+        card->setStyleSheet(QString("QFrame { border: 2px solid %1; border-radius: 10px; background: white;}").arg(border.name()));
 
         QVBoxLayout *l = new QVBoxLayout(card);
-        l->setContentsMargins(16, 14, 16, 14);
+        l->setContentsMargins(16,14,16,14);
         l->setSpacing(6);
 
         QLabel *labelText = new QLabel(label);
-        labelText->setStyleSheet(
-            "color: #555;"
-            "font-size: 13px;"
-            "border: none;"
-            "background: transparent;"
-            );
+        labelText->setStyleSheet("color:#555;font-size:13px;border:none;background:transparent;");
 
-        QLabel *valueText = new QLabel(value);
-        valueText->setFont(QFont("Segoe UI", 18, QFont::Bold));
-        valueText->setStyleSheet(
-            "border: none;"
-            "background: transparent;"
-            );
+        valueLabel->setStyleSheet("border:none;background:transparent;");
+        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
         l->addWidget(labelText);
-        l->addWidget(valueText);
+        l->addWidget(valueLabel);
 
         return card;
     };
 
 
-
-    statsGrid->addWidget(statCard("Distance","5 km",Qt::black),0,0);
-    statsGrid->addWidget(statCard("Time","14 min",Qt::yellow),0,1);
-    statsGrid->addWidget(statCard("Cost","$18",Qt::green),0,2);
-    statsGrid->addWidget(statCard("Transfers","0",Qt::red),0,3);
-
+    QLabel *distanceValue = new QLabel("0 km");
+    QLabel *timeValue = new QLabel("0 min");
+    QLabel *costValue = new QLabel("Rs.0");
+    QLabel *transferValue = new QLabel("0");
+    statsGrid->addWidget(statCard("Distance",distanceValue,Qt::black),0,0);
+    statsGrid->addWidget(statCard("Time",timeValue,Qt::yellow),0,1);
+    statsGrid->addWidget(statCard("Cost",costValue,Qt::green),0,2);
+    statsGrid->addWidget(statCard("Transfers",transferValue,Qt::red),0,3);
     resultsLayout->addLayout(statsGrid);
 
     QTabWidget *tabs = new QTabWidget;
-
     QWidget *routeTab = new QWidget;
     QVBoxLayout *routeTabLayout = new QVBoxLayout(routeTab);
-    routeTabLayout->addWidget(new QLabel("Stop A → Stop B → Stop C → Stop D"));
-    routeTabLayout->addWidget(new QLabel("Bus Route: 101"));
-    routeTabLayout->addWidget(new QLabel("Distance: 2.5 km | Time: 8 min"));
+    QLabel *routeDetailsLabel = new QLabel("Route will appear here");
+    routeTabLayout->addWidget(routeDetailsLabel);
 
     QWidget *musicTab = new QWidget;
     QVBoxLayout *musicLayout = new QVBoxLayout(musicTab);
@@ -180,11 +187,55 @@ MainWindow::MainWindow(QWidget *parent)
 
     tabs->addTab(routeTab,"Route Details");
     tabs->addTab(musicTab,"Music Recommendation");
-
     resultsLayout->addWidget(tabs);
     mainLayout->addWidget(results);
 
-    test_backend();
+    connect(findBtn,&QPushButton::clicked,this,[=]() mutable {
+        QString srcName = srcCombo->currentText();
+        QString dstName = dstCombo->currentText();
+        if(srcName == dstName) return;
 
+        int optimize = minDist->isChecked() ? 0 : 1;
+        Routeresults result = find_route(srcName.toStdString().c_str(),
+                                         dstName.toStdString().c_str(),
+                                         optimize);
 
+        distanceValue->setText(QString::number(result.distance) + " km");
+        timeValue->setText(QString::number(result.time) + " min");
+        costValue->setText("Rs. " + QString::number(result.cost));
+        transferValue->setText(QString::number(result.transfers));
+
+        QString pathText;
+        for(int i=0;i<result.pathlength;i++){
+            int node = result.path[i];
+            QString stopName = stops[node].name;
+            pathText += stopName;
+            if(i < result.pathlength-1) pathText += " → ";
+            if(i < result.pathlength-1){
+                int nextNode = result.path[i+1];
+                scene->addLine(
+                    stopPositions[stopName].x()+8,
+                    stopPositions[stopName].y()+8,
+                    stopPositions[stops[nextNode].name].x()+8,
+                    stopPositions[stops[nextNode].name].y()+8,
+                    QPen(Qt::red,4)
+                    );
+            }
+        }
+        routeDetailsLabel->setText(pathText);
+    });
+
+    connect(clearBtn,&QPushButton::clicked,this,[=](){
+        for(auto item: scene->items()){
+            if(auto line = dynamic_cast<QGraphicsLineItem*>(item)){
+                if(line->pen().color() == Qt::red)
+                    scene->removeItem(line);
+            }
+        }
+        distanceValue->setText("0 km");
+        timeValue->setText("0 min");
+        costValue->setText("$0");
+        transferValue->setText("0");
+        routeDetailsLabel->setText("Route cleared");
+    });
 }
