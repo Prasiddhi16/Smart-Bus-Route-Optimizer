@@ -3,6 +3,17 @@
 #include <float.h>
 #include <string.h>
 
+static const char* upbeatPlaylist[] = {
+    "Upbeat Track 1", "Upbeat Track 2", "Upbeat Track 3"
+};
+static const char* chillPlaylist[] = {
+    "Lo-fi Chill 1", "Lo-fi Chill 2"
+};
+static const char* ambientPlaylist[] = {
+    "Ambient Mix 1", "Ambient Mix 2"
+};
+
+
 Stop stops[MAX_STOPS];
 int stopcount = 0;
 
@@ -118,4 +129,25 @@ Routeresults find_route(const char *source, const char *destination, int optimiz
 
     return result;
 
+
 }
+PlaylistResult recommend_playlist(int time, int distance) {
+    PlaylistResult result;
+
+    if(time < 15 && distance < 5) {
+        result.tracks = upbeatPlaylist;
+        result.trackCount = sizeof(upbeatPlaylist)/sizeof(upbeatPlaylist[0]);
+        strcpy(result.name, "Upbeat Hits");
+    } else if(time< 30) {
+        result.tracks = chillPlaylist;
+        result.trackCount = sizeof(chillPlaylist)/sizeof(chillPlaylist[0]);
+        strcpy(result.name, "Lo-fi Chill");
+    } else {
+        result.tracks = ambientPlaylist;
+        result.trackCount = sizeof(ambientPlaylist)/sizeof(ambientPlaylist[0]);
+        strcpy(result.name, "Ambient Journey");
+    }
+
+    return result;
+}
+

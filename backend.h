@@ -30,6 +30,14 @@ typedef struct {
     int path[20];
     int pathlength;
 }Routeresults;
+typedef struct {
+    const char** tracks;
+    int trackCount;
+    char name[32];
+} PlaylistResult;
+
+PlaylistResult recommend_playlist(int time, int distance);
+
 void initbusnet();
 Routeresults find_route(const char*source,const char*destination ,int optimizetime);
 extern Stop stops[MAX_STOPS];

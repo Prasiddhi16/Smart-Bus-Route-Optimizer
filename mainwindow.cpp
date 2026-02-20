@@ -20,6 +20,9 @@ extern "C" {
 #include <QScrollArea>
 #include <QFont>
 #include <QMap>
+#include <QMediaPlayer>
+#include <QAudioOutput>
+#include <QSlider>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -107,7 +110,7 @@ MainWindow::MainWindow(QWidget *parent)
     stopDraw("A",100*scale, 150*scale,Qt::green);
     stopDraw("B",200*scale,250*scale,Qt::green);
     stopDraw("C",300*scale,100*scale,Qt::yellow);
-    stopDraw("D",400*scale,180*scale,Qt::green);
+    stopDraw("D",450*scale,180*scale,Qt::green);
     stopDraw("E",500*scale,120*scale,Qt::yellow);
     stopDraw("F",150*scale,300*scale,Qt::green);
     stopDraw("G",250*scale,50*scale,Qt::yellow);
@@ -117,26 +120,20 @@ MainWindow::MainWindow(QWidget *parent)
     scene->setSceneRect(scene->itemsBoundingRect());
     view->fitInView(scene->sceneRect(), Qt::KeepAspectRatio);
 
-
-    for(int i=0;i<stopcount;i++)
-{
-        for(int j=0;j<stops[i].edgecount;j++)
-        {
-        int v =stops[i].edge[j].to;
-        if(i<v)
-        {
-            scene->addLine(
-                stopPositions[stops[i].name].x()+8,
-                stopPositions[stops[i].name].y()+8,
-                stopPositions[stops[v].name].x()+8,
-                stopPositions[stops[v].name].y()+8,
-                QPen(Qt::gray, 1)
-                );
-
-        }
+    for(int i=0;i<stopcount;i++){
+        for(int j=0;j<stops[i].edgecount;j++){
+            int v =stops[i].edge[j].to;
+            if(i<v){
+                scene->addLine(
+                    stopPositions[stops[i].name].x()+8,
+                    stopPositions[stops[i].name].y()+8,
+                    stopPositions[stops[v].name].x()+8,
+                    stopPositions[stops[v].name].y()+8,
+                    QPen(Qt::gray, 1)
+                    );
+            }
         }
     }
-
 
     QGroupBox *results = new QGroupBox("Results");
     QVBoxLayout *resultsLayout = new QVBoxLayout(results);
@@ -145,31 +142,25 @@ MainWindow::MainWindow(QWidget *parent)
     auto statCard = [&](const QString &label, QLabel* valueLabel, QColor border){
         QFrame *card = new QFrame;
         card->setStyleSheet(QString("QFrame { border: 2px solid %1; border-radius: 10px; background: white;}").arg(border.name()));
-
         QVBoxLayout *l = new QVBoxLayout(card);
         l->setContentsMargins(16,14,16,14);
         l->setSpacing(6);
-
         QLabel *labelText = new QLabel(label);
         labelText->setStyleSheet("color:#555;font-size:13px;border:none;background:transparent;");
-
         valueLabel->setStyleSheet("border:none;background:transparent;");
         valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
         l->addWidget(labelText);
         l->addWidget(valueLabel);
-
         return card;
     };
-
 
     QLabel *distanceValue = new QLabel("0 km");
     QLabel *timeValue = new QLabel("0 min");
     QLabel *costValue = new QLabel("Rs.0");
     QLabel *transferValue = new QLabel("0");
     statsGrid->addWidget(statCard("Distance",distanceValue,Qt::black),0,0);
-    statsGrid->addWidget(statCard("Time",timeValue,Qt::yellow),0,1);
-    statsGrid->addWidget(statCard("Cost",costValue,Qt::green),0,2);
+    statsGrid->addWidget(statCard("Time",timeValue,Qt::blue),0,1);
+    statsGrid->addWidget(statCard("Cost",costValue, Qt::gray),0,2);
     statsGrid->addWidget(statCard("Transfers",transferValue,Qt::red),0,3);
     resultsLayout->addLayout(statsGrid);
 
@@ -181,12 +172,32 @@ MainWindow::MainWindow(QWidget *parent)
 
     QWidget *musicTab = new QWidget;
     QVBoxLayout *musicLayout = new QVBoxLayout(musicTab);
-    musicLayout->addWidget(new QLabel("Lo-fi Chill"));
-    musicLayout->addWidget(new QLabel("Soft Pop"));
-    musicLayout->addWidget(new QLabel("Upbeat Hits"));
+    QVBoxLayout *playlistLayout = new QVBoxLayout;
+    musicLayout->addLayout(playlistLayout);
+
+    QSlider *progressSlider = new QSlider(Qt::Horizontal);
+    progressSlider->setRange(0, 100);
+    QLabel *elapsedLabel = new QLabel("0:00");
+    QLabel *remainingLabel = new QLabel("-0:00");
+    QHBoxLayout *progressLayout = new QHBoxLayout;
+    progressLayout->addWidget(elapsedLabel);
+    progressLayout->addWidget(progressSlider);
+    progressLayout->addWidget(remainingLabel);
+    musicLayout->addLayout(progressLayout);
+
+    QHBoxLayout *controlsLayout = new QHBoxLayout;
+    QPushButton *playBtn = new QPushButton("▶ Play");
+    QPushButton *pauseBtn = new QPushButton("⏸ Pause");
+    QPushButton *nextBtn = new QPushButton("⏭ Next");
+    QPushButton *prevBtn = new QPushButton("⏮ Prev");
+    controlsLayout->addWidget(prevBtn);
+    controlsLayout->addWidget(playBtn);
+    controlsLayout->addWidget(pauseBtn);
+    controlsLayout->addWidget(nextBtn);
+    musicLayout->addLayout(controlsLayout);
 
     tabs->addTab(routeTab,"Route Details");
-    tabs->addTab(musicTab,"Music Recommendation");
+    tabs->addTab(musicTab,"Music For Your Journey!");
     resultsLayout->addWidget(tabs);
     mainLayout->addWidget(results);
 
@@ -223,6 +234,19 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
         routeDetailsLabel->setText(pathText);
+
+        PlaylistResult pl = recommend_playlist((int)result.time, (int)result.distance);
+
+        QLayoutItem* child;
+        while((child = playlistLayout->takeAt(0)) != nullptr){
+            delete child->widget();
+            delete child;
+        }
+
+        playlistLayout->addWidget(new QLabel(QString("🎵 ") + pl.name));
+        for(int i=0; i<pl.trackCount; i++){
+            playlistLayout->addWidget(new QLabel("• " + QString(pl.tracks[i])));
+        }
     });
 
     connect(clearBtn,&QPushButton::clicked,this,[=](){
@@ -234,8 +258,14 @@ MainWindow::MainWindow(QWidget *parent)
         }
         distanceValue->setText("0 km");
         timeValue->setText("0 min");
-        costValue->setText("$0");
+        costValue->setText("Rs. 0");
         transferValue->setText("0");
         routeDetailsLabel->setText("Route cleared");
+
+        QLayoutItem* child;
+        while((child = playlistLayout->takeAt(0)) != nullptr){
+            delete child->widget();
+            delete child;
+        }
     });
 }
